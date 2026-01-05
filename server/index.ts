@@ -3,8 +3,8 @@ import session from "express-session";
 import { createServer } from "http";
 import path from "path";
 import fs from "fs";
-import { registerRoutes } from "./routes";
-import { storage } from "./storage";
+import { registerRoutes } from "./routes.js";
+import { storage } from "./storage.js";
 
 declare module "express-session" {
   interface SessionData {
