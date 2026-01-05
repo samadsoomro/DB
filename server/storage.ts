@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db } from "./db.js";
 import { eq, and } from "drizzle-orm";
 import {
   users, profiles, contactMessages, bookBorrows, libraryCardApplications,

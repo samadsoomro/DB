@@ -12,19 +12,42 @@ const app = express();
 app.use(express.json({ limit: '1024mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1024mb' }));
 
-// Set up sessions immediately to avoid race conditions
-const PostgresStore = connectPgSimple(session);
+// Health check endpoint for early debugging
+app.get("/api/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    env: app.get("env"),
+    dbConfigured: !!process.env.DATABASE_URL,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Set up sessions with PostgresStore
+let sessionStore;
+try {
+  const PostgresStore = connectPgSimple(session);
+  sessionStore = new PostgresStore({
+    pool: pool,
+    createTableIfMissing: true,
+    tableName: 'session'
+  });
+  console.log("[SERVER] PostgresSessionStore initialized.");
+} catch (error) {
+  console.error("[SERVER] Failed to initialize PostgresSessionStore, falling back to MemoryStore:", error);
+  // Optional: Fallback to MemoryStore if Postgres fails (not recommended for production but better than 500)
+}
 
 app.use(
   session({
-    store: new PostgresStore({
-      pool: pool,
-      createTableIfMissing: true,
-    }),
+    store: sessionStore,
     secret: process.env.SESSION_SECRET || "gcmn-library-secret-2024",
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 86400000, secure: process.env.NODE_ENV === "production" },
+    cookie: {
+      maxAge: 86400000,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax"
+    },
   })
 );
 
