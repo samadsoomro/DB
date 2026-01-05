@@ -102,7 +102,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(user: InsertUser): Promise<User> {
-    const [created] = await db.insert(users).values(user).returning();
+    const [created] = await db.insert(users).values(user as any).returning();
     return created;
   }
 
@@ -116,7 +116,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProfile(profile: InsertProfile): Promise<Profile> {
-    const [created] = await db.insert(profiles).values(profile).returning();
+    const [created] = await db.insert(profiles).values(profile as any).returning();
     return created;
   }
 
@@ -130,7 +130,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUserRole(role: InsertUserRole): Promise<UserRole> {
-    const [created] = await db.insert(userRoles).values(role).returning();
+    const [created] = await db.insert(userRoles).values(role as any).returning();
     return created;
   }
 
@@ -149,7 +149,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createContactMessage(message: InsertContactMessage): Promise<ContactMessage> {
-    const [created] = await db.insert(contactMessages).values(message).returning();
+    const [created] = await db.insert(contactMessages).values(message as any).returning();
     return created;
   }
 
@@ -171,7 +171,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBookBorrow(borrow: InsertBookBorrow): Promise<BookBorrow> {
-    const [created] = await db.insert(bookBorrows).values(borrow).returning();
+    const [created] = await db.insert(bookBorrows).values(borrow as any).returning();
     return created;
   }
 
@@ -256,7 +256,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createDonation(donation: InsertDonation): Promise<Donation> {
-    const [created] = await db.insert(donations).values(donation).returning();
+    const [created] = await db.insert(donations).values(donation as any).returning();
     return created;
   }
 
@@ -274,7 +274,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createStudent(student: InsertStudent): Promise<Student> {
-    const [created] = await db.insert(students).values(student).returning();
+    const [created] = await db.insert(students).values(student as any).returning();
     return created;
   }
 
@@ -288,7 +288,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createNonStudent(nonStudent: InsertNonStudent): Promise<NonStudent> {
-    const [created] = await db.insert(nonStudents).values(nonStudent).returning();
+    const [created] = await db.insert(nonStudents).values(nonStudent as any).returning();
     return created;
   }
 
@@ -297,7 +297,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createNotification(notification: InsertNotification): Promise<Notification> {
-    const [created] = await db.insert(notifications).values(notification).returning();
+    const [created] = await db.insert(notifications).values(notification as any).returning();
     return created;
   }
 
@@ -316,12 +316,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBook(book: InsertBook): Promise<Book> {
-    const [created] = await db.insert(books).values(book).returning();
+    const [created] = await db.insert(books).values(book as any).returning();
     return created;
   }
 
   async updateBook(id: string, book: Partial<InsertBook>): Promise<Book | undefined> {
-    const [updated] = await db.update(books).set({ ...book, updatedAt: new Date() }).where(eq(books.id, id)).returning();
+    const [updated] = await db.update(books).set({ ...book, updatedAt: new Date() } as any).where(eq(books.id, id)).returning();
     return updated;
   }
 
@@ -334,18 +334,23 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(events);
   }
 
+  async getEvent(id: string): Promise<Event | undefined> {
+    const [event] = await db.select().from(events).where(eq(events.id, id));
+    return event;
+  }
+
   async createEvent(event: InsertEvent): Promise<Event> {
-    const [created] = await db.insert(events).values(event).returning();
+    const [created] = await db.insert(events).values(event as any).returning();
     return created;
   }
 
   async updateEvent(id: string, event: Partial<InsertEvent>): Promise<Event | undefined> {
-    const [updated] = await db.update(events).set({ ...event, updatedAt: new Date() }).where(eq(events.id, id)).returning();
+    const [updated] = await db.update(events).set(event as any).where(eq(events.id, id)).returning();
     return updated;
   }
 
   async deleteEvent(id: string): Promise<void> {
-    await db.delete(events).where(eq(events.id, id));
+    await db.delete(events).where(eq(events.id, id)).returning();
   }
 
   // Rare Books Implementation
@@ -359,7 +364,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createRareBook(book: InsertRareBook): Promise<RareBook> {
-    const [created] = await db.insert(rareBooks).values(book).returning();
+    const [created] = await db.insert(rareBooks).values(book as any).returning();
     return created;
   }
 
@@ -367,7 +372,7 @@ export class DatabaseStorage implements IStorage {
     const book = await this.getRareBook(id);
     if (!book) return undefined;
     const newStatus = book.status === "active" ? "inactive" : "active";
-    const [updated] = await db.update(rareBooks).set({ status: newStatus }).where(eq(rareBooks.id, id)).returning();
+    const [updated] = await db.update(rareBooks).set({ status: newStatus } as any).where(eq(rareBooks.id, id)).returning();
     return updated;
   }
 
@@ -395,12 +400,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createNote(note: InsertNote): Promise<Note> {
-    const [created] = await db.insert(notes).values(note).returning();
+    const [created] = await db.insert(notes).values(note as any).returning();
     return created;
   }
 
   async updateNote(id: string, note: Partial<InsertNote>): Promise<Note | undefined> {
-    const [updated] = await db.update(notes).set(note).where(eq(notes.id, id)).returning();
+    const [updated] = await db.update(notes).set(note as any).where(eq(notes.id, id)).returning();
     return updated;
   }
 
