@@ -1,17 +1,20 @@
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import {
   users, profiles, contactMessages, bookBorrows, libraryCardApplications,
-  donations, students, nonStudents, userRoles, notifications,
+  donations, students, nonStudents, userRoles, notifications, books, events, rareBooks, notes,
   InsertUser, InsertProfile, InsertContactMessage, InsertBookBorrow,
   InsertLibraryCardApplication, InsertDonation, InsertStudent, InsertNonStudent, InsertUserRole, InsertNotification,
-  User, Profile, ContactMessage, BookBorrow, LibraryCardApplication, Donation, Student, NonStudent, UserRole, Notification
+  InsertBook, InsertEvent, InsertRareBook, InsertNote,
+  User, Profile, ContactMessage, BookBorrow, LibraryCardApplication, Donation, Student, NonStudent, UserRole, Notification,
+  Book, Event, RareBook, Note
 } from "@shared/schema";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  deleteUser(id: string): Promise<void>;
 
   getProfile(userId: string): Promise<Profile | undefined>;
   createProfile(profile: InsertProfile): Promise<Profile>;
@@ -31,6 +34,7 @@ export interface IStorage {
   getBookBorrowsByUser(userId: string): Promise<BookBorrow[]>;
   createBookBorrow(borrow: InsertBookBorrow): Promise<BookBorrow>;
   updateBookBorrowStatus(id: string, status: string, returnDate?: Date): Promise<BookBorrow | undefined>;
+  deleteBookBorrow(id: string): Promise<void>;
 
   getLibraryCardApplications(): Promise<LibraryCardApplication[]>;
   getLibraryCardApplication(id: string): Promise<LibraryCardApplication | undefined>;
@@ -50,12 +54,40 @@ export interface IStorage {
 
   getNonStudents(): Promise<NonStudent[]>;
   getNonStudent(userId: string): Promise<NonStudent | undefined>;
-  getNonStudent(userId: string): Promise<NonStudent | undefined>;
   createNonStudent(nonStudent: InsertNonStudent): Promise<NonStudent>;
 
   getNotifications(): Promise<Notification[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
   deleteNotification(id: string): Promise<void>;
+
+  // Books
+  getBooks(): Promise<Book[]>;
+  getBook(id: string): Promise<Book | undefined>;
+  createBook(book: InsertBook): Promise<Book>;
+  updateBook(id: string, book: Partial<InsertBook>): Promise<Book | undefined>;
+  deleteBook(id: string): Promise<void>;
+
+  // Events
+  getEvents(): Promise<Event[]>;
+  createEvent(event: InsertEvent): Promise<Event>;
+  updateEvent(id: string, event: Partial<InsertEvent>): Promise<Event | undefined>;
+  deleteEvent(id: string): Promise<void>;
+
+  // Rare Books
+  getRareBooks(): Promise<RareBook[]>;
+  getRareBook(id: string): Promise<RareBook | undefined>;
+  createRareBook(book: InsertRareBook): Promise<RareBook>;
+  toggleRareBookStatus(id: string): Promise<RareBook | undefined>;
+  deleteRareBook(id: string): Promise<void>;
+
+  // Notes
+  getNotes(): Promise<Note[]>;
+  getActiveNotes(): Promise<Note[]>;
+  getNotesByClassAndSubject(studentClass: string, subject: string): Promise<Note[]>;
+  createNote(note: InsertNote): Promise<Note>;
+  updateNote(id: string, note: Partial<InsertNote>): Promise<Note | undefined>;
+  toggleNoteStatus(id: string): Promise<Note | undefined>;
+  deleteNote(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -72,6 +104,10 @@ export class DatabaseStorage implements IStorage {
   async createUser(user: InsertUser): Promise<User> {
     const [created] = await db.insert(users).values(user).returning();
     return created;
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    await db.delete(users).where(eq(users.id, id));
   }
 
   async getProfile(userId: string): Promise<Profile | undefined> {
@@ -144,6 +180,10 @@ export class DatabaseStorage implements IStorage {
     if (returnDate) updateData.returnDate = returnDate;
     const [updated] = await db.update(bookBorrows).set(updateData).where(eq(bookBorrows.id, id)).returning();
     return updated;
+  }
+
+  async deleteBookBorrow(id: string): Promise<void> {
+    await db.delete(bookBorrows).where(eq(bookBorrows.id, id));
   }
 
   async getLibraryCardApplications(): Promise<LibraryCardApplication[]> {
@@ -263,6 +303,117 @@ export class DatabaseStorage implements IStorage {
 
   async deleteNotification(id: string): Promise<void> {
     await db.delete(notifications).where(eq(notifications.id, id));
+  }
+
+  // Books Implementation
+  async getBooks(): Promise<Book[]> {
+    return db.select().from(books);
+  }
+
+  async getBook(id: string): Promise<Book | undefined> {
+    const [book] = await db.select().from(books).where(eq(books.id, id));
+    return book;
+  }
+
+  async createBook(book: InsertBook): Promise<Book> {
+    const [created] = await db.insert(books).values(book).returning();
+    return created;
+  }
+
+  async updateBook(id: string, book: Partial<InsertBook>): Promise<Book | undefined> {
+    const [updated] = await db.update(books).set({ ...book, updatedAt: new Date() }).where(eq(books.id, id)).returning();
+    return updated;
+  }
+
+  async deleteBook(id: string): Promise<void> {
+    await db.delete(books).where(eq(books.id, id));
+  }
+
+  // Events Implementation
+  async getEvents(): Promise<Event[]> {
+    return db.select().from(events);
+  }
+
+  async createEvent(event: InsertEvent): Promise<Event> {
+    const [created] = await db.insert(events).values(event).returning();
+    return created;
+  }
+
+  async updateEvent(id: string, event: Partial<InsertEvent>): Promise<Event | undefined> {
+    const [updated] = await db.update(events).set({ ...event, updatedAt: new Date() }).where(eq(events.id, id)).returning();
+    return updated;
+  }
+
+  async deleteEvent(id: string): Promise<void> {
+    await db.delete(events).where(eq(events.id, id));
+  }
+
+  // Rare Books Implementation
+  async getRareBooks(): Promise<RareBook[]> {
+    return db.select().from(rareBooks);
+  }
+
+  async getRareBook(id: string): Promise<RareBook | undefined> {
+    const [book] = await db.select().from(rareBooks).where(eq(rareBooks.id, id));
+    return book;
+  }
+
+  async createRareBook(book: InsertRareBook): Promise<RareBook> {
+    const [created] = await db.insert(rareBooks).values(book).returning();
+    return created;
+  }
+
+  async toggleRareBookStatus(id: string): Promise<RareBook | undefined> {
+    const book = await this.getRareBook(id);
+    if (!book) return undefined;
+    const newStatus = book.status === "active" ? "inactive" : "active";
+    const [updated] = await db.update(rareBooks).set({ status: newStatus }).where(eq(rareBooks.id, id)).returning();
+    return updated;
+  }
+
+  async deleteRareBook(id: string): Promise<void> {
+    await db.delete(rareBooks).where(eq(rareBooks.id, id));
+  }
+
+  // Notes Implementation
+  async getNotes(): Promise<Note[]> {
+    return db.select().from(notes);
+  }
+
+  async getActiveNotes(): Promise<Note[]> {
+    return db.select().from(notes).where(eq(notes.status, "active"));
+  }
+
+  async getNotesByClassAndSubject(studentClass: string, subject: string): Promise<Note[]> {
+    return db.select().from(notes).where(
+      and(
+        eq(notes.class, studentClass),
+        eq(notes.subject, subject),
+        eq(notes.status, "active")
+      )
+    );
+  }
+
+  async createNote(note: InsertNote): Promise<Note> {
+    const [created] = await db.insert(notes).values(note).returning();
+    return created;
+  }
+
+  async updateNote(id: string, note: Partial<InsertNote>): Promise<Note | undefined> {
+    const [updated] = await db.update(notes).set(note).where(eq(notes.id, id)).returning();
+    return updated;
+  }
+
+  async toggleNoteStatus(id: string): Promise<Note | undefined> {
+    const [note] = await db.select().from(notes).where(eq(notes.id, id));
+    if (!note) return undefined;
+    const newStatus = note.status === "active" ? "inactive" : "active";
+    const [updated] = await db.update(notes).set({ status: newStatus }).where(eq(notes.id, id)).returning();
+    return updated;
+  }
+
+  async deleteNote(id: string): Promise<void> {
+    await db.delete(notes).where(eq(notes.id, id));
   }
 }
 

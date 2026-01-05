@@ -2,8 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { createServer } from "http";
 import path from "path";
+import fs from "fs";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
 
 declare module "express-session" {
@@ -55,7 +55,7 @@ app.use((req, res, next) => {
         logLine = logLine.slice(0, 79) + "…";
       }
 
-      log(logLine);
+      console.log(logLine);
     }
   });
 
@@ -85,9 +85,20 @@ app.use((req, res, next) => {
   app.use("/server/uploads", express.static(uploadDir));
 
   if (app.get("env") === "development") {
+    // Dynamic import to avoid bundling vite in production
+    const { setupVite } = await import("./vite");
     await setupVite(app, server);
   } else {
-    serveStatic(app);
+    // Standard static file serving for production
+    const distPath = path.resolve(process.cwd(), "dist"); // Vercel build output usually goes to 'dist'
+
+    // Check if dist exists, but don't crash if not (Vercel might handle it differently)
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.use("*", (_req, res) => {
+        res.sendFile(path.resolve(distPath, "index.html"));
+      });
+    }
   }
 
   if (!process.env.VERCEL) {
@@ -98,7 +109,7 @@ app.use((req, res, next) => {
         host: "0.0.0.0",
       },
       () => {
-        log(`serving on port ${port}`);
+        console.log(`serving on port ${port}`);
       }
     );
   }

@@ -197,3 +197,18 @@ export const notifications = pgTable("notifications", {
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+
+export const notes = pgTable("notes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  class: text("class").notNull(),
+  subject: text("subject").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  pdfPath: text("pdf_path").notNull(),
+  status: text("status").default("active").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const insertNoteSchema = createInsertSchema(notes).omit({ id: true, createdAt: true });
+export type InsertNote = z.infer<typeof insertNoteSchema>;
+export type Note = typeof notes.$inferSelect;
