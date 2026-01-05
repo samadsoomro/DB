@@ -5,123 +5,103 @@ import path from "path";
 import fs from "fs";
 import { registerRoutes } from "./routes.js";
 import { storage } from "./storage.js";
-
-declare module "express-session" {
-  interface SessionData {
-    userId?: string;
-    isAdmin?: boolean;
-    isLibraryCard?: boolean;
-  }
-}
+import connectPgSimple from "connect-pg-simple";
+import { pool } from "./db.js";
 
 const app = express();
 app.use(express.json({ limit: '1024mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1024mb' }));
 
-// Initialized inside the async block to handle potential ESM-related top-level await issues in some environments
-let serverInitialized = false;
+// Set up sessions immediately to avoid race conditions
+const PostgresStore = connectPgSimple(session);
 
-(async () => {
-  try {
-    console.log("[SERVER] Starting initialization...");
+app.use(
+  session({
+    store: new PostgresStore({
+      pool: pool,
+      createTableIfMissing: true,
+    }),
+    secret: process.env.SESSION_SECRET || "gcmn-library-secret-2024",
+    resave: false,
+    saveUninitialized: false,
+    cookie: { maxAge: 86400000, secure: process.env.NODE_ENV === "production" },
+  })
+);
 
-    const sessionModule = await import("express-session");
-    const sessionHandler = sessionModule.default;
-    const MemoryStoreConstructor = (await import("memorystore")).default(sessionHandler);
+// Logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  const path = req.path;
+  let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
-    app.use(
-      sessionHandler({
-        cookie: { maxAge: 86400000 },
-        store: new MemoryStoreConstructor({
-          checkPeriod: 86400000,
-        }),
-        resave: false,
-        saveUninitialized: false,
-        secret: process.env.SESSION_SECRET || "gcmn-library-secret-2024",
-      })
-    );
+  const originalResJson = res.json;
+  res.json = function (bodyJson, ...args) {
+    capturedJsonResponse = bodyJson;
+    return originalResJson.apply(res, [bodyJson, ...args]);
+  };
 
-    app.use((req, res, next) => {
-      const start = Date.now();
-      const path = req.path;
-      let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-      const originalResJson = res.json;
-      res.json = function (bodyJson, ...args) {
-        capturedJsonResponse = bodyJson;
-        return originalResJson.apply(res, [bodyJson, ...args]);
-      };
-
-      res.on("finish", () => {
-        const duration = Date.now() - start;
-        if (path.startsWith("/api")) {
-          let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-          if (capturedJsonResponse) {
-            logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-          }
-
-          if (logLine.length > 80) {
-            logLine = logLine.slice(0, 79) + "…";
-          }
-
-          console.log(logLine);
-        }
-      });
-
-      next();
-    });
-
-    console.log("[SERVER] Registering routes...");
-    registerRoutes(app);
-
-    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-      const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
-      console.error(`[SERVER ERROR] ${status}: ${message}`, err);
-      res.status(status).json({ message });
-    });
-
-    const server = createServer(app);
-    server.timeout = 600000;
-    server.keepAliveTimeout = 65000;
-    server.headersTimeout = 66000;
-
-    const uploadDir = path.join(process.cwd(), "server", "uploads");
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    if (path.startsWith("/api")) {
+      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      if (capturedJsonResponse) {
+        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      }
+      if (logLine.length > 80) logLine = logLine.slice(0, 79) + "…";
+      console.log(logLine);
     }
-    app.use("/server/uploads", express.static(uploadDir));
+  });
 
-    if (app.get("env") === "development") {
-      const vitePath = "./vi" + "te";
+  next();
+});
+
+// Register routes synchronously so the app is ready when imported by Vercel
+registerRoutes(app);
+
+// Error handling
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+  console.error(`[SERVER ERROR] ${status}: ${message}`, err);
+  res.status(status).json({ message });
+});
+
+const server = createServer(app);
+server.timeout = 600000;
+
+// Setup static files and Vite (Vite is development only)
+const uploadDir = path.join(process.cwd(), "server", "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+app.use("/server/uploads", express.static(uploadDir));
+
+if (app.get("env") === "development") {
+  (async () => {
+    const vitePath = "./vi" + "te.js";
+    try {
       const { setupVite } = await import(vitePath);
       await setupVite(app, server);
-    } else {
-      const distPath = path.resolve(process.cwd(), "dist");
-      if (fs.existsSync(distPath)) {
-        app.use(express.static(distPath));
-        app.use("*", (_req, res) => {
-          res.sendFile(path.resolve(distPath, "index.html"));
-        });
-      }
+    } catch (e) {
+      console.error("[SERVER] Failed to load Vite:", e);
     }
-
-    if (!process.env.VERCEL) {
-      const port = 5000;
-      server.listen({ port, host: "0.0.0.0" }, () => {
-        console.log(`[SERVER] Serving on port ${port}`);
-      });
-    }
-
-    serverInitialized = true;
-    console.log("[SERVER] Initialization complete.");
-  } catch (error) {
-    console.error("[SERVER] FATAL INITIALIZATION ERROR:", error);
-    // Don't throw, let Vercel handle the request (though it will likely 404 or fail later)
-    // Actually, throwing might be better so Vercel logs the crash clearly
-    throw error;
+  })();
+} else {
+  const distPath = path.resolve(process.cwd(), "dist");
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.use("*", (_req, res) => {
+      res.sendFile(path.resolve(distPath, "index.html"));
+    });
   }
-})();
+}
 
-// Re-export app for Vercel
+// Local server start
+if (!process.env.VERCEL) {
+  const port = process.env.PORT ? parseInt(process.env.PORT) : 5000;
+  server.listen({ port, host: "0.0.0.0" }, () => {
+    console.log(`[SERVER] Ready on port ${port}`);
+  });
+}
+
 export { app };
