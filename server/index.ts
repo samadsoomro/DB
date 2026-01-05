@@ -86,7 +86,9 @@ app.use((req, res, next) => {
 
   if (app.get("env") === "development") {
     // Dynamic import to avoid bundling vite in production
-    const { setupVite } = await import("./vite");
+    // Obfuscate path to prevent bundler from tracing it
+    const vitePath = "./vite";
+    const { setupVite } = await import(vitePath);
     await setupVite(app, server);
   } else {
     // Standard static file serving for production
