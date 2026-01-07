@@ -87,7 +87,7 @@ const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY || "GCMN-ADMIN-ONLY";
 declare global {
   namespace Express {
     interface Request {
-      session?: {
+      session: {
         userId?: string;
         isAdmin?: boolean;
         isLibraryCard?: boolean;

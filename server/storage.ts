@@ -342,7 +342,7 @@ export class SupabaseStorage implements IStorage {
         const { count } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('card_id', card.cardNumber);
         if (count === 0) {
           await this.createStudent({
-            userId: card.id, // Using application ID as userId for student, or card.userId?
+
             // MemStorage used: userId: application.userId || `card-${application.id}`
             // We should stick to that logic
             userId: card.userId || `card-${card.id}`,
