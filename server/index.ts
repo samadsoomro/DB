@@ -5,8 +5,9 @@ import path from "path";
 import fs from "fs";
 import { registerRoutes } from "./routes.js";
 import { storage } from "./storage.js";
-import connectPgSimple from "connect-pg-simple";
-import { pool } from "./db.js";
+import MemoryStoreSrc from "memorystore";
+
+const MemoryStore = MemoryStoreSrc(session);
 
 const app = express();
 app.use(express.json({ limit: '1024mb' }));
@@ -17,29 +18,15 @@ app.get("/api/health", (_req, res) => {
   res.json({
     status: "ok",
     env: app.get("env"),
-    dbConfigured: !!process.env.DATABASE_URL,
     timestamp: new Date().toISOString()
   });
 });
 
-// Set up sessions with PostgresStore
-let sessionStore;
-try {
-  const PostgresStore = connectPgSimple(session);
-  sessionStore = new PostgresStore({
-    pool: pool,
-    createTableIfMissing: true,
-    tableName: 'session'
-  });
-  console.log("[SERVER] PostgresSessionStore initialized.");
-} catch (error) {
-  console.error("[SERVER] Failed to initialize PostgresSessionStore, falling back to MemoryStore:", error);
-  // Optional: Fallback to MemoryStore if Postgres fails (not recommended for production but better than 500)
-}
-
 app.use(
   session({
-    store: sessionStore,
+    store: new MemoryStore({
+      checkPeriod: 86400000 // prune expired entries every 24h
+    }),
     secret: process.env.SESSION_SECRET || "gcmn-library-secret-2024",
     resave: false,
     saveUninitialized: false,

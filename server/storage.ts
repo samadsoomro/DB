@@ -1,8 +1,4 @@
-import { db } from "./db.js";
-import { eq, and } from "drizzle-orm";
 import {
-  users, profiles, contactMessages, bookBorrows, libraryCardApplications,
-  donations, students, nonStudents, userRoles, notifications, books, events, rareBooks, notes,
   InsertUser, InsertProfile, InsertContactMessage, InsertBookBorrow,
   InsertLibraryCardApplication, InsertDonation, InsertStudent, InsertNonStudent, InsertUserRole, InsertNotification,
   InsertBook, InsertEvent, InsertRareBook, InsertNote,
@@ -90,48 +86,100 @@ export interface IStorage {
   deleteNote(id: string): Promise<void>;
 }
 
-export class DatabaseStorage implements IStorage {
+export class MemStorage implements IStorage {
+  private users: Map<string, User>;
+  private profiles: Map<string, Profile>;
+  private userRoles: Map<string, UserRole>;
+  private contactMessages: Map<string, ContactMessage>;
+  private bookBorrows: Map<string, BookBorrow>;
+  private libraryCardApplications: Map<string, LibraryCardApplication>;
+  private donations: Map<string, Donation>;
+  private students: Map<string, Student>;
+  private nonStudents: Map<string, NonStudent>;
+  private notifications: Map<string, Notification>;
+  private books: Map<string, Book>;
+  private events: Map<string, Event>;
+  private rareBooks: Map<string, RareBook>;
+  private notes: Map<string, Note>;
+
+  constructor() {
+    this.users = new Map();
+    this.profiles = new Map();
+    this.userRoles = new Map();
+    this.contactMessages = new Map();
+    this.bookBorrows = new Map();
+    this.libraryCardApplications = new Map();
+    this.donations = new Map();
+    this.students = new Map();
+    this.nonStudents = new Map();
+    this.notifications = new Map();
+    this.books = new Map();
+    this.events = new Map();
+    this.rareBooks = new Map();
+    this.notes = new Map();
+  }
+
+  // Helper to generate UUIDs
+  private genId(): string {
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  }
+
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    return this.users.get(id);
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return Array.from(this.users.values()).find(u => u.email === email);
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const id = this.genId();
+    const user: User = { ...insertUser, id, createdAt: new Date() } as User;
+    this.users.set(id, user);
     return user;
   }
 
-  async createUser(user: InsertUser): Promise<User> {
-    const [created] = await db.insert(users).values(user as any).returning();
-    return created;
-  }
-
   async deleteUser(id: string): Promise<void> {
-    await db.delete(users).where(eq(users.id, id));
+    this.users.delete(id);
   }
 
   async getProfile(userId: string): Promise<Profile | undefined> {
-    const [profile] = await db.select().from(profiles).where(eq(profiles.userId, userId));
+    return Array.from(this.profiles.values()).find(p => p.userId === userId);
+  }
+
+  async createProfile(insertProfile: InsertProfile): Promise<Profile> {
+    const id = this.genId();
+    const profile: Profile = {
+      ...insertProfile,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    } as Profile;
+    this.profiles.set(id, profile);
     return profile;
   }
 
-  async createProfile(profile: InsertProfile): Promise<Profile> {
-    const [created] = await db.insert(profiles).values(profile as any).returning();
-    return created;
-  }
-
-  async updateProfile(userId: string, profile: Partial<InsertProfile>): Promise<Profile | undefined> {
-    const [updated] = await db.update(profiles).set({ ...profile, updatedAt: new Date() }).where(eq(profiles.userId, userId)).returning();
+  async updateProfile(userId: string, partial: Partial<InsertProfile>): Promise<Profile | undefined> {
+    const profile = await this.getProfile(userId);
+    if (!profile) return undefined;
+    const updated: Profile = {
+      ...profile,
+      ...partial,
+      updatedAt: new Date()
+    };
+    this.profiles.set(profile.id, updated);
     return updated;
   }
 
   async getUserRoles(userId: string): Promise<UserRole[]> {
-    return db.select().from(userRoles).where(eq(userRoles.userId, userId));
+    return Array.from(this.userRoles.values()).filter(r => r.userId === userId);
   }
 
   async createUserRole(role: InsertUserRole): Promise<UserRole> {
-    const [created] = await db.insert(userRoles).values(role as any).returning();
-    return created;
+    const id = this.genId();
+    const userRole: UserRole = { ...role, id, createdAt: new Date() } as UserRole;
+    this.userRoles.set(id, userRole);
+    return userRole;
   }
 
   async hasRole(userId: string, role: string): Promise<boolean> {
@@ -140,79 +188,101 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getContactMessages(): Promise<ContactMessage[]> {
-    return db.select().from(contactMessages);
+    return Array.from(this.contactMessages.values());
   }
 
   async getContactMessage(id: string): Promise<ContactMessage | undefined> {
-    const [message] = await db.select().from(contactMessages).where(eq(contactMessages.id, id));
-    return message;
+    return this.contactMessages.get(id);
   }
 
   async createContactMessage(message: InsertContactMessage): Promise<ContactMessage> {
-    const [created] = await db.insert(contactMessages).values(message as any).returning();
-    return created;
+    const id = this.genId();
+    const msg: ContactMessage = { ...message, id, isSeen: false, createdAt: new Date() } as ContactMessage;
+    this.contactMessages.set(id, msg);
+    return msg;
   }
 
   async updateContactMessageSeen(id: string, isSeen: boolean): Promise<ContactMessage | undefined> {
-    const [updated] = await db.update(contactMessages).set({ isSeen }).where(eq(contactMessages.id, id)).returning();
+    const msg = this.contactMessages.get(id);
+    if (!msg) return undefined;
+    const updated = { ...msg, isSeen };
+    this.contactMessages.set(id, updated);
     return updated;
   }
 
   async deleteContactMessage(id: string): Promise<void> {
-    await db.delete(contactMessages).where(eq(contactMessages.id, id));
+    this.contactMessages.delete(id);
   }
 
   async getBookBorrows(): Promise<BookBorrow[]> {
-    return db.select().from(bookBorrows);
+    return Array.from(this.bookBorrows.values());
   }
 
   async getBookBorrowsByUser(userId: string): Promise<BookBorrow[]> {
-    return db.select().from(bookBorrows).where(eq(bookBorrows.userId, userId));
+    return Array.from(this.bookBorrows.values()).filter(b => b.userId === userId);
   }
 
   async createBookBorrow(borrow: InsertBookBorrow): Promise<BookBorrow> {
-    const [created] = await db.insert(bookBorrows).values(borrow as any).returning();
-    return created;
+    const id = this.genId();
+    const newBorrow: BookBorrow = {
+      ...borrow,
+      id,
+      borrowDate: new Date(),
+      dueDate: new Date(borrow.dueDate), // Ensure Date object
+      returnDate: null,
+      status: "borrowed",
+      createdAt: new Date()
+    } as BookBorrow;
+    this.bookBorrows.set(id, newBorrow);
+    return newBorrow;
   }
 
   async updateBookBorrowStatus(id: string, status: string, returnDate?: Date): Promise<BookBorrow | undefined> {
-    const updateData: any = { status };
-    if (returnDate) updateData.returnDate = returnDate;
-    const [updated] = await db.update(bookBorrows).set(updateData).where(eq(bookBorrows.id, id)).returning();
+    const borrow = this.bookBorrows.get(id);
+    if (!borrow) return undefined;
+    const updated = { ...borrow, status, returnDate: returnDate || borrow.returnDate };
+    this.bookBorrows.set(id, updated);
     return updated;
   }
 
   async deleteBookBorrow(id: string): Promise<void> {
-    await db.delete(bookBorrows).where(eq(bookBorrows.id, id));
+    this.bookBorrows.delete(id);
   }
 
   async getLibraryCardApplications(): Promise<LibraryCardApplication[]> {
-    return db.select().from(libraryCardApplications);
+    return Array.from(this.libraryCardApplications.values());
   }
 
   async getLibraryCardApplication(id: string): Promise<LibraryCardApplication | undefined> {
-    const [application] = await db.select().from(libraryCardApplications).where(eq(libraryCardApplications.id, id));
-    return application;
+    return this.libraryCardApplications.get(id);
   }
 
   async getLibraryCardApplicationsByUser(userId: string): Promise<LibraryCardApplication[]> {
-    return db.select().from(libraryCardApplications).where(eq(libraryCardApplications.userId, userId));
+    return Array.from(this.libraryCardApplications.values()).filter(a => a.userId === userId);
   }
 
   async createLibraryCardApplication(application: InsertLibraryCardApplication): Promise<LibraryCardApplication> {
+    const id = this.genId();
     const cardNumber = this.generateCardNumber(application.field, application.rollNo, application.class);
     const studentId = `GCMN-${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
     const issueDate = new Date().toISOString().split('T')[0];
-    const validThrough = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const validThroughDate = new Date();
+    validThroughDate.setFullYear(validThroughDate.getFullYear() + 1);
+    const validThrough = validThroughDate.toISOString().split('T')[0];
 
-    const [created] = await db.insert(libraryCardApplications).values({
+    const newApp: LibraryCardApplication = {
       ...application,
+      id,
       cardNumber,
       studentId,
       issueDate,
-      validThrough
-    } as any).returning();
-    return created;
+      validThrough,
+      status: "pending",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    } as LibraryCardApplication;
+    this.libraryCardApplications.set(id, newApp);
+    return newApp;
   }
 
   private generateCardNumber(field: string | null | undefined, rollNo: string, studentClass: string): string {
@@ -238,188 +308,224 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateLibraryCardApplicationStatus(id: string, status: string): Promise<LibraryCardApplication | undefined> {
-    const [updated] = await db.update(libraryCardApplications).set({ status, updatedAt: new Date() }).where(eq(libraryCardApplications.id, id)).returning();
+    const app = this.libraryCardApplications.get(id);
+    if (!app) return undefined;
+    const updated = { ...app, status, updatedAt: new Date() };
+    this.libraryCardApplications.set(id, updated);
     return updated;
   }
 
   async deleteLibraryCardApplication(id: string): Promise<void> {
-    await db.delete(libraryCardApplications).where(eq(libraryCardApplications.id, id));
+    this.libraryCardApplications.delete(id);
   }
 
   async getLibraryCardByCardNumber(cardNumber: string): Promise<LibraryCardApplication | undefined> {
-    const [card] = await db.select().from(libraryCardApplications).where(eq(libraryCardApplications.cardNumber, cardNumber));
-    return card;
+    return Array.from(this.libraryCardApplications.values()).find(a => a.cardNumber === cardNumber);
   }
 
   async getDonations(): Promise<Donation[]> {
-    return db.select().from(donations);
+    return Array.from(this.donations.values());
   }
 
   async createDonation(donation: InsertDonation): Promise<Donation> {
-    const [created] = await db.insert(donations).values(donation as any).returning();
-    return created;
+    const id = this.genId();
+    const newDonation: Donation = { ...donation, id, createdAt: new Date() } as Donation;
+    this.donations.set(id, newDonation);
+    return newDonation;
   }
 
   async deleteDonation(id: string): Promise<void> {
-    await db.delete(donations).where(eq(donations.id, id));
+    this.donations.delete(id);
   }
 
   async getStudents(): Promise<Student[]> {
-    return db.select().from(students);
+    return Array.from(this.students.values());
   }
 
   async getStudent(userId: string): Promise<Student | undefined> {
-    const [student] = await db.select().from(students).where(eq(students.userId, userId));
-    return student;
+    return Array.from(this.students.values()).find(s => s.userId === userId);
   }
 
   async createStudent(student: InsertStudent): Promise<Student> {
-    const [created] = await db.insert(students).values(student as any).returning();
-    return created;
+    const id = this.genId();
+    const newStudent: Student = { ...student, id, createdAt: new Date() } as Student;
+    this.students.set(id, newStudent);
+    return newStudent;
   }
 
   async getNonStudents(): Promise<NonStudent[]> {
-    return db.select().from(nonStudents);
+    return Array.from(this.nonStudents.values());
   }
 
   async getNonStudent(userId: string): Promise<NonStudent | undefined> {
-    const [nonStudent] = await db.select().from(nonStudents).where(eq(nonStudents.userId, userId));
-    return nonStudent;
+    return Array.from(this.nonStudents.values()).find(ns => ns.userId === userId);
   }
 
   async createNonStudent(nonStudent: InsertNonStudent): Promise<NonStudent> {
-    const [created] = await db.insert(nonStudents).values(nonStudent as any).returning();
-    return created;
+    const id = this.genId();
+    const newNonStudent: NonStudent = { ...nonStudent, id, createdAt: new Date() } as NonStudent;
+    this.nonStudents.set(id, newNonStudent);
+    return newNonStudent;
   }
 
   async getNotifications(): Promise<Notification[]> {
-    return db.select().from(notifications).orderBy(notifications.createdAt);
+    return Array.from(this.notifications.values()).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
   async createNotification(notification: InsertNotification): Promise<Notification> {
-    const [created] = await db.insert(notifications).values(notification as any).returning();
-    return created;
+    const id = this.genId();
+    const newNotif: Notification = { ...notification, id, createdAt: new Date() } as Notification;
+    this.notifications.set(id, newNotif);
+    return newNotif;
   }
 
   async deleteNotification(id: string): Promise<void> {
-    await db.delete(notifications).where(eq(notifications.id, id));
+    this.notifications.delete(id);
   }
 
-  // Books Implementation
   async getBooks(): Promise<Book[]> {
-    return db.select().from(books);
+    return Array.from(this.books.values());
   }
 
   async getBook(id: string): Promise<Book | undefined> {
-    const [book] = await db.select().from(books).where(eq(books.id, id));
-    return book;
+    return this.books.get(id);
   }
 
   async createBook(book: InsertBook): Promise<Book> {
-    const [created] = await db.insert(books).values(book as any).returning();
-    return created;
+    const id = this.genId();
+    // Assuming Book uses numbers for copies, though schema interface says number
+    const newBook: Book = {
+      ...book,
+      id,
+      totalCopies: Number(book.totalCopies || 1),
+      availableCopies: Number(book.availableCopies || 1),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    } as Book;
+    this.books.set(id, newBook);
+    return newBook;
   }
 
-  async updateBook(id: string, book: Partial<InsertBook>): Promise<Book | undefined> {
-    const [updated] = await db.update(books).set({ ...book, updatedAt: new Date() } as any).where(eq(books.id, id)).returning();
+  async updateBook(id: string, partial: Partial<InsertBook>): Promise<Book | undefined> {
+    const book = this.books.get(id);
+    if (!book) return undefined;
+    const updated = {
+      ...book,
+      ...partial,
+      totalCopies: partial.totalCopies !== undefined ? Number(partial.totalCopies) : book.totalCopies,
+      availableCopies: partial.availableCopies !== undefined ? Number(partial.availableCopies) : book.availableCopies,
+      updatedAt: new Date()
+    };
+    this.books.set(id, updated);
     return updated;
   }
 
   async deleteBook(id: string): Promise<void> {
-    await db.delete(books).where(eq(books.id, id));
+    this.books.delete(id);
   }
 
-  // Events Implementation
   async getEvents(): Promise<Event[]> {
-    return db.select().from(events);
-  }
-
-  async getEvent(id: string): Promise<Event | undefined> {
-    const [event] = await db.select().from(events).where(eq(events.id, id));
-    return event;
+    return Array.from(this.events.values());
   }
 
   async createEvent(event: InsertEvent): Promise<Event> {
-    const [created] = await db.insert(events).values(event as any).returning();
-    return created;
+    const id = this.genId();
+    const newEvent: Event = {
+      ...event,
+      id,
+      images: event.images || null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    } as Event;
+    this.events.set(id, newEvent);
+    return newEvent;
   }
 
-  async updateEvent(id: string, event: Partial<InsertEvent>): Promise<Event | undefined> {
-    const [updated] = await db.update(events).set(event as any).where(eq(events.id, id)).returning();
+  async updateEvent(id: string, partial: Partial<InsertEvent>): Promise<Event | undefined> {
+    const event = this.events.get(id);
+    if (!event) return undefined;
+    const updated = {
+      ...event,
+      ...partial,
+      updatedAt: new Date()
+    };
+    this.events.set(id, updated);
     return updated;
   }
 
   async deleteEvent(id: string): Promise<void> {
-    await db.delete(events).where(eq(events.id, id)).returning();
+    this.events.delete(id);
   }
 
-  // Rare Books Implementation
   async getRareBooks(): Promise<RareBook[]> {
-    return db.select().from(rareBooks);
+    return Array.from(this.rareBooks.values());
   }
 
   async getRareBook(id: string): Promise<RareBook | undefined> {
-    const [book] = await db.select().from(rareBooks).where(eq(rareBooks.id, id));
-    return book;
+    return this.rareBooks.get(id);
   }
 
   async createRareBook(book: InsertRareBook): Promise<RareBook> {
-    const [created] = await db.insert(rareBooks).values(book as any).returning();
-    return created;
+    const id = this.genId();
+    const newBook: RareBook = { ...book, id, createdAt: new Date() } as RareBook;
+    this.rareBooks.set(id, newBook);
+    return newBook;
   }
 
   async toggleRareBookStatus(id: string): Promise<RareBook | undefined> {
-    const book = await this.getRareBook(id);
+    const book = this.rareBooks.get(id);
     if (!book) return undefined;
-    const newStatus = book.status === "active" ? "inactive" : "active";
-    const [updated] = await db.update(rareBooks).set({ status: newStatus } as any).where(eq(rareBooks.id, id)).returning();
+    const updated = { ...book, status: book.status === "active" ? "inactive" : "active" };
+    this.rareBooks.set(id, updated);
     return updated;
   }
 
   async deleteRareBook(id: string): Promise<void> {
-    await db.delete(rareBooks).where(eq(rareBooks.id, id));
+    this.rareBooks.delete(id);
   }
 
-  // Notes Implementation
   async getNotes(): Promise<Note[]> {
-    return db.select().from(notes);
+    return Array.from(this.notes.values());
   }
 
   async getActiveNotes(): Promise<Note[]> {
-    return db.select().from(notes).where(eq(notes.status, "active"));
+    return Array.from(this.notes.values()).filter(n => n.status === "active");
   }
 
   async getNotesByClassAndSubject(studentClass: string, subject: string): Promise<Note[]> {
-    return db.select().from(notes).where(
-      and(
-        eq(notes.class, studentClass),
-        eq(notes.subject, subject),
-        eq(notes.status, "active")
-      )
+    return Array.from(this.notes.values()).filter(n =>
+      n.class === studentClass &&
+      n.subject === subject &&
+      n.status === "active"
     );
   }
 
   async createNote(note: InsertNote): Promise<Note> {
-    const [created] = await db.insert(notes).values(note as any).returning();
-    return created;
+    const id = this.genId();
+    const newNote: Note = { ...note, id, createdAt: new Date() } as Note;
+    this.notes.set(id, newNote);
+    return newNote;
   }
 
-  async updateNote(id: string, note: Partial<InsertNote>): Promise<Note | undefined> {
-    const [updated] = await db.update(notes).set(note as any).where(eq(notes.id, id)).returning();
+  async updateNote(id: string, partial: Partial<InsertNote>): Promise<Note | undefined> {
+    const note = this.notes.get(id);
+    if (!note) return undefined;
+    const updated = { ...note, ...partial };
+    this.notes.set(id, updated);
     return updated;
   }
 
   async toggleNoteStatus(id: string): Promise<Note | undefined> {
-    const [note] = await db.select().from(notes).where(eq(notes.id, id));
+    const note = this.notes.get(id);
     if (!note) return undefined;
-    const newStatus = note.status === "active" ? "inactive" : "active";
-    const [updated] = await db.update(notes).set({ status: newStatus }).where(eq(notes.id, id)).returning();
+    const updated = { ...note, status: note.status === "active" ? "inactive" : "active" };
+    this.notes.set(id, updated);
     return updated;
   }
 
   async deleteNote(id: string): Promise<void> {
-    await db.delete(notes).where(eq(notes.id, id));
+    this.notes.delete(id);
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage = new MemStorage();
