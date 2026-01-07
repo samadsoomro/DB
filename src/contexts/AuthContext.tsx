@@ -108,9 +108,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         credentials: 'include',
         body: JSON.stringify(body)
       });
-      
-      const data = await res.json();
-      
+
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("Failed to parse login response:", text);
+        return { success: false, error: "Server returned invalid response (possibly HTML error)" };
+      }
+
       if (!res.ok) {
         return { success: false, error: data.error || 'Login failed' };
       }
@@ -143,8 +150,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         })
       });
 
-      const data = await res.json();
-      
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        return { success: false, error: "Server Registration Error: " + text.substring(0, 100) };
+      }
+
       if (!res.ok) {
         return { success: false, error: data.error || 'Registration failed' };
       }

@@ -49,6 +49,11 @@ app.use((req, res, next) => {
 // Register routes synchronously
 registerRoutes(app);
 
+// Catch-all for API 404s to prevent HTML responses
+app.use("/api/*", (_req, res) => {
+  res.status(404).json({ error: "API Endpoint Not Found" });
+});
+
 // Error handling
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   const status = err.status || err.statusCode || 500;

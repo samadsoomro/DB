@@ -147,6 +147,12 @@ export function registerRoutes(app: Express): void {
   app.post("/api/auth/login", async (req, res) => {
     console.log("[LOGIN] Attempt started");
     try {
+      // 1. Validate Environment
+      if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        console.error("[LOGIN] Missing SUPABASE_SERVICE_ROLE_KEY");
+        return res.status(500).json({ error: "Server Configuration Error: Missing DB Keys" });
+      }
+
       const { email, password, secretKey, libraryCardId } = req.body;
       console.log("[LOGIN] Payload received:", { hasEmail: !!email, hasSecret: !!secretKey, hasCard: !!libraryCardId });
 
