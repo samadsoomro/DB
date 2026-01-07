@@ -51,15 +51,16 @@ registerRoutes(app);
 
 // Catch-all for API 404s to prevent HTML responses
 app.use("/api/*", (_req, res) => {
-  res.status(404).json({ error: "API Endpoint Not Found" });
+  res.status(404).json({ success: false, message: "API Endpoint Not Found" });
 });
 
-// Error handling
+// Error handling - enforcing JSON format
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   const status = err.status || err.statusCode || 500;
   const message = err.message || "Internal Server Error";
   console.error(`[SERVER ERROR] ${status}: ${message}`, err);
-  res.status(status).json({ message });
+  // PREVENT HTML RESPONSE at all costs
+  res.status(status).json({ success: false, message });
 });
 
 const server = createServer(app);
