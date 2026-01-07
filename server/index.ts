@@ -8,6 +8,7 @@ import { registerRoutes } from "./routes.js";
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: false, limit: '50mb' }));
+app.set("trust proxy", 1); // Specific for Vercel/proxies to allow secure cookies
 
 // Health check endpoint
 app.get("/api/health", (_req, res) => {
@@ -23,7 +24,7 @@ app.use(
   cookieSession({
     name: 'session',
     keys: [process.env.SESSION_SECRET || 'gcmn-library-secret-key-replaced-with-env'],
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    maxAge: 24 * 60 * 60 * 1000,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? 'none' : 'lax' // 'none' required for cross-site if needed, but 'lax' usually fine
   })
