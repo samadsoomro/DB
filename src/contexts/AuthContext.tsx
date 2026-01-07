@@ -118,16 +118,36 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         return { success: false, error: "Server returned invalid response (possibly HTML error)" };
       }
 
+      // Handle HTML error responses safely or API errors
       if (!res.ok) {
-        return { success: false, error: data.error || 'Login failed' };
+        // If it was parsed as JSON, but has error or message
+        return { success: false, error: data.message || data.error || 'Login failed' };
       }
 
-      if (data.redirect) {
-        window.location.href = data.redirect;
+      // New Strict JSON Protocol: check for success: false
+      if (data.success === false) {
+        return { success: false, error: data.message || data.error || 'Login failed' };
       }
 
-      await fetchCurrentUser();
-      return { success: true };
+      // Standard format success: true, data: { ... }
+      if (data.success && data.data) {
+        if (data.data.redirect) {
+          window.location.href = data.data.redirect;
+        }
+        await fetchCurrentUser();
+        return { success: true };
+      }
+
+      // Fallback for legacy format (user object at root)
+      if (data.user) {
+        if (data.redirect) {
+          window.location.href = data.redirect;
+        }
+        await fetchCurrentUser();
+        return { success: true };
+      }
+
+      return { success: false, error: data.message || "Unknown login error" };
     } catch (error: any) {
       return { success: false, error: error.message };
     }

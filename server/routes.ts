@@ -150,7 +150,7 @@ export function registerRoutes(app: Express): void {
       // 1. Validate Environment
       if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
         console.error("[LOGIN] Missing SUPABASE_SERVICE_ROLE_KEY");
-        return res.status(500).json({ error: "Server Configuration Error: Missing DB Keys" });
+        return res.status(500).json({ success: false, message: "Server Configuration Error: Missing DB Keys" });
       }
 
       const { email, password, secretKey, libraryCardId } = req.body;
@@ -158,7 +158,7 @@ export function registerRoutes(app: Express): void {
 
       if (!req.session) {
         console.error("[LOGIN] No session object found on request");
-        return res.status(500).json({ error: "Session init failed" });
+        return res.status(500).json({ success: false, message: "Session init failed" });
       }
 
       // Check if admin login attempt
@@ -178,9 +178,12 @@ export function registerRoutes(app: Express): void {
               req.session.isAdmin = true;
               console.log("[LOGIN] Admin login successful");
               return res.json({
-                user: { id: adminUser.id, email: ADMIN_EMAIL },
-                isAdmin: true,
-                redirect: "/admin-dashboard"
+                success: true,
+                data: {
+                  user: { id: adminUser.id, email: ADMIN_EMAIL },
+                  isAdmin: true,
+                  redirect: "/admin-dashboard"
+                }
               });
             } else {
               console.log("[LOGIN] Admin password invalid or email mismatch");
@@ -197,24 +200,22 @@ export function registerRoutes(app: Express): void {
       if (libraryCardId) {
         console.log("[LOGIN] Processing Library Card Login");
         if (!password) {
-          return res.status(401).json({ error: "Password is required for library card login" });
+          return res.status(401).json({ success: false, message: "Password is required for library card login" });
         }
 
         const cardApp = await storage.getLibraryCardByCardNumber(libraryCardId);
 
-        const invalidCredentialsMsg = "Write correct details";
-
         if (!cardApp) {
-          return res.status(401).json({ error: invalidCredentialsMsg });
+          return res.status(401).json({ success: false, message: "Write correct details" });
         }
 
         if (cardApp.password) {
           const valid = await bcrypt.compare(password, cardApp.password);
           if (!valid) {
-            return res.status(401).json({ error: invalidCredentialsMsg });
+            return res.status(401).json({ success: false, message: "Write correct details" });
           }
         } else {
-          return res.status(401).json({ error: "No password set. Please contact library." });
+          return res.status(401).json({ success: false, message: "No password set. Please contact library." });
         }
 
         const status = cardApp.status?.toLowerCase() || "pending";
@@ -222,7 +223,10 @@ export function registerRoutes(app: Express): void {
         req.session.userId = `card-${cardApp.id}`;
         req.session.isAdmin = false;
         req.session.isLibraryCard = true;
-        return res.json({ user: { id: cardApp.id, email: cardApp.email, name: `${cardApp.firstName} ${cardApp.lastName}` } });
+        return res.json({
+          success: true,
+          data: { user: { id: cardApp.id, email: cardApp.email, name: `${cardApp.firstName} ${cardApp.lastName}` } }
+        });
       }
 
       // Normal user login
@@ -230,13 +234,13 @@ export function registerRoutes(app: Express): void {
       const user = await storage.getUserByEmail(email);
       if (!user) {
         console.log("[LOGIN] User not found");
-        return res.status(401).json({ error: "Invalid credentials" });
+        return res.status(401).json({ success: false, message: "Invalid credentials" });
       }
 
       const valid = await bcrypt.compare(password, user.password!);
       if (!valid) {
         console.log("[LOGIN] Password mismatch");
-        return res.status(401).json({ error: "Invalid credentials" });
+        return res.status(401).json({ success: false, message: "Invalid credentials" });
       }
 
       req.session.userId = user.id;
@@ -245,10 +249,13 @@ export function registerRoutes(app: Express): void {
       req.session.isAdmin = user.id === "admin" || !!user.isAdmin || isAdminRole;
 
       console.log("[LOGIN] Login successful for:", user.id);
-      res.json({ user: { id: user.id, email: user.email } });
+      res.json({
+        success: true,
+        data: { user: { id: user.id, email: user.email } }
+      });
     } catch (error: any) {
       console.error("[LOGIN] CRITICAL ERROR:", error);
-      res.status(500).json({ error: "Internal Login Error: " + error.message });
+      res.status(500).json({ success: false, message: "Internal Login Error: " + error.message });
     }
   });
 
