@@ -506,7 +506,7 @@ export function registerRoutes(app: Express): void {
 
       // Update available copies
       await storage.updateBook(bookId, {
-        availableCopies: Math.max(0, (book.availableCopies || 0) - 1)
+        availableCopies: Math.max(0, (parseInt(book.availableCopies?.toString() || "0")) - 1) as any
       });
 
       res.json(borrow);
@@ -529,7 +529,7 @@ export function registerRoutes(app: Express): void {
       const book = await storage.getBook(borrow.bookId);
       if (book) {
         await storage.updateBook(borrow.bookId, {
-          availableCopies: (book.availableCopies || 0) + 1
+          availableCopies: (parseInt(book.availableCopies?.toString() || "0") + 1) as any
         });
       }
 
@@ -834,8 +834,8 @@ export function registerRoutes(app: Express): void {
       }
       const book = await storage.createBook({
         bookName, shortIntro, description,
-        totalCopies: Number(totalCopies),
-        availableCopies: Number(totalCopies),
+        totalCopies: Number(totalCopies) as any,
+        availableCopies: Number(totalCopies) as any,
         bookImage: imageUrl
       });
       res.json(book);
