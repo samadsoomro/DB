@@ -5,6 +5,7 @@ import {
   User, Profile, ContactMessage, BookBorrow, LibraryCardApplication, Donation, Student, NonStudent, UserRole, Notification,
   Book, Event, RareBook, Note
 } from "@shared/schema";
+import { supabase } from "./db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -86,183 +87,200 @@ export interface IStorage {
   deleteNote(id: string): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private profiles: Map<string, Profile>;
-  private userRoles: Map<string, UserRole>;
-  private contactMessages: Map<string, ContactMessage>;
-  private bookBorrows: Map<string, BookBorrow>;
-  private libraryCardApplications: Map<string, LibraryCardApplication>;
-  private donations: Map<string, Donation>;
-  private students: Map<string, Student>;
-  private nonStudents: Map<string, NonStudent>;
-  private notifications: Map<string, Notification>;
-  private books: Map<string, Book>;
-  private events: Map<string, Event>;
-  private rareBooks: Map<string, RareBook>;
-  private notes: Map<string, Note>;
-
-  constructor() {
-    this.users = new Map();
-    this.profiles = new Map();
-    this.userRoles = new Map();
-    this.contactMessages = new Map();
-    this.bookBorrows = new Map();
-    this.libraryCardApplications = new Map();
-    this.donations = new Map();
-    this.students = new Map();
-    this.nonStudents = new Map();
-    this.notifications = new Map();
-    this.books = new Map();
-    this.events = new Map();
-    this.rareBooks = new Map();
-    this.notes = new Map();
+// Helper functions for casing
+function toCamel(obj: any): any {
+  if (Array.isArray(obj)) return obj.map(toCamel);
+  if (obj !== null && typeof obj === 'object') {
+    return Object.keys(obj).reduce((acc, key) => {
+      const camelKey = key.replace(/([-_][a-z])/g, group =>
+        group.toUpperCase().replace('-', '').replace('_', '')
+      );
+      let value = obj[key];
+      // Convert timestamps to Dates
+      if (['created_at', 'updated_at', 'borrow_date', 'due_date', 'return_date'].includes(key) && value) {
+        value = new Date(value);
+      }
+      acc[camelKey] = toCamel(value);
+      return acc;
+    }, {} as any);
   }
+  return obj;
+}
 
-  // Helper to generate UUIDs
-  private genId(): string {
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+function toSnake(obj: any): any {
+  if (Array.isArray(obj)) return obj.map(toSnake);
+  if (obj !== null && typeof obj === 'object') {
+    if (obj instanceof Date) return obj.toISOString();
+    return Object.keys(obj).reduce((acc, key) => {
+      const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      acc[snakeKey] = toSnake(obj[key]);
+      return acc;
+    }, {} as any);
   }
+  return obj;
+}
 
+export class SupabaseStorage implements IStorage {
+
+  // USERS
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
+    if (error || !data) return undefined;
+    return toCamel(data);
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(u => u.email === email);
+    const { data, error } = await supabase.from('users').select('*').eq('email', email).single();
+    if (error || !data) return undefined;
+    return toCamel(data);
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.genId();
-    const user: User = { ...insertUser, id, createdAt: new Date() } as User;
-    this.users.set(id, user);
-    return user;
+    const { data, error } = await supabase.from('users').insert(toSnake(insertUser)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
   async deleteUser(id: string): Promise<void> {
-    this.users.delete(id);
+    await supabase.from('users').delete().eq('id', id);
   }
 
+  // PROFILES
   async getProfile(userId: string): Promise<Profile | undefined> {
-    return Array.from(this.profiles.values()).find(p => p.userId === userId);
+    const { data, error } = await supabase.from('profiles').select('*').eq('user_id', userId).single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
-  async createProfile(insertProfile: InsertProfile): Promise<Profile> {
-    const id = this.genId();
-    const profile: Profile = {
-      ...insertProfile,
-      id,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    } as Profile;
-    this.profiles.set(id, profile);
-    return profile;
+  async createProfile(profile: InsertProfile): Promise<Profile> {
+    const { data, error } = await supabase.from('profiles').insert(toSnake(profile)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
-  async updateProfile(userId: string, partial: Partial<InsertProfile>): Promise<Profile | undefined> {
-    const profile = await this.getProfile(userId);
-    if (!profile) return undefined;
-    const updated: Profile = {
-      ...profile,
-      ...partial,
-      updatedAt: new Date()
-    };
-    this.profiles.set(profile.id, updated);
-    return updated;
+  async updateProfile(userId: string, profile: Partial<InsertProfile>): Promise<Profile | undefined> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(toSnake(profile))
+      .eq('user_id', userId)
+      .select()
+      .single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
+  // ROLES
   async getUserRoles(userId: string): Promise<UserRole[]> {
-    return Array.from(this.userRoles.values()).filter(r => r.userId === userId);
+    const { data, error } = await supabase.from('user_roles').select('*').eq('user_id', userId);
+    if (error) return [];
+    return toCamel(data);
   }
 
   async createUserRole(role: InsertUserRole): Promise<UserRole> {
-    const id = this.genId();
-    const userRole: UserRole = { ...role, id, createdAt: new Date() } as UserRole;
-    this.userRoles.set(id, userRole);
-    return userRole;
+    const { data, error } = await supabase.from('user_roles').insert(toSnake(role)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
   async hasRole(userId: string, role: string): Promise<boolean> {
-    const roles = await this.getUserRoles(userId);
-    return roles.some(r => r.role === role);
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('role', role)
+      .maybeSingle();
+    return !!data;
   }
 
+  // CONTACT MESSAGES
   async getContactMessages(): Promise<ContactMessage[]> {
-    return Array.from(this.contactMessages.values());
+    const { data, error } = await supabase.from('contact_messages').select('*').order('created_at', { ascending: false });
+    if (error) return [];
+    return toCamel(data);
   }
 
   async getContactMessage(id: string): Promise<ContactMessage | undefined> {
-    return this.contactMessages.get(id);
+    const { data, error } = await supabase.from('contact_messages').select('*').eq('id', id).single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async createContactMessage(message: InsertContactMessage): Promise<ContactMessage> {
-    const id = this.genId();
-    const msg: ContactMessage = { ...message, id, isSeen: false, createdAt: new Date() } as ContactMessage;
-    this.contactMessages.set(id, msg);
-    return msg;
+    const { data, error } = await supabase.from('contact_messages').insert(toSnake(message)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
   async updateContactMessageSeen(id: string, isSeen: boolean): Promise<ContactMessage | undefined> {
-    const msg = this.contactMessages.get(id);
-    if (!msg) return undefined;
-    const updated = { ...msg, isSeen };
-    this.contactMessages.set(id, updated);
-    return updated;
+    const { data, error } = await supabase.from('contact_messages').update({ is_seen: isSeen }).eq('id', id).select().single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async deleteContactMessage(id: string): Promise<void> {
-    this.contactMessages.delete(id);
+    await supabase.from('contact_messages').delete().eq('id', id);
   }
 
+  // BOOK BORROWS
   async getBookBorrows(): Promise<BookBorrow[]> {
-    return Array.from(this.bookBorrows.values());
+    const { data, error } = await supabase.from('book_borrows').select('*');
+    if (error) return [];
+    return toCamel(data);
   }
 
   async getBookBorrowsByUser(userId: string): Promise<BookBorrow[]> {
-    return Array.from(this.bookBorrows.values()).filter(b => b.userId === userId);
+    const { data, error } = await supabase.from('book_borrows').select('*').eq('user_id', userId);
+    if (error) return [];
+    return toCamel(data);
   }
 
   async createBookBorrow(borrow: InsertBookBorrow): Promise<BookBorrow> {
-    const id = this.genId();
-    const newBorrow: BookBorrow = {
-      ...borrow,
-      id,
-      borrowDate: new Date(),
-      dueDate: new Date(borrow.dueDate), // Ensure Date object
-      returnDate: null,
-      status: "borrowed",
-      createdAt: new Date()
-    } as BookBorrow;
-    this.bookBorrows.set(id, newBorrow);
-    return newBorrow;
+    const { data, error } = await supabase.from('book_borrows').insert(toSnake(borrow)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
   async updateBookBorrowStatus(id: string, status: string, returnDate?: Date): Promise<BookBorrow | undefined> {
-    const borrow = this.bookBorrows.get(id);
-    if (!borrow) return undefined;
-    const updated = { ...borrow, status, returnDate: returnDate || borrow.returnDate };
-    this.bookBorrows.set(id, updated);
-    return updated;
+    const updates: any = { status };
+    if (returnDate) updates.return_date = returnDate.toISOString();
+
+    const { data, error } = await supabase.from('book_borrows').update(updates).eq('id', id).select().single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async deleteBookBorrow(id: string): Promise<void> {
-    this.bookBorrows.delete(id);
+    await supabase.from('book_borrows').delete().eq('id', id);
   }
 
+  // LIBRARY CARDS
   async getLibraryCardApplications(): Promise<LibraryCardApplication[]> {
-    return Array.from(this.libraryCardApplications.values());
+    const { data, error } = await supabase.from('library_card_applications').select('*');
+    if (error) return [];
+    return toCamel(data);
   }
 
   async getLibraryCardApplication(id: string): Promise<LibraryCardApplication | undefined> {
-    return this.libraryCardApplications.get(id);
+    const cleanId = (id || "").toString().trim();
+    // Try to match partial ID if full UUID not provided? No, Supabase expects UUIDs usually.
+    // If the old app generated short IDs (hex), Supabase might fail if column is UUID.
+    // The Setup SQL defines 'id' as uuid. If the current data has non-uuid ids, this will fail.
+    // However, clean Refactor implies fresh data or mapped data.
+    // We assume strict UUID usage from now on.
+    const { data, error } = await supabase.from('library_card_applications').select('*').eq('id', cleanId).single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async getLibraryCardApplicationsByUser(userId: string): Promise<LibraryCardApplication[]> {
-    return Array.from(this.libraryCardApplications.values()).filter(a => a.userId === userId);
+    const { data, error } = await supabase.from('library_card_applications').select('*').eq('user_id', userId);
+    if (error) return [];
+    return toCamel(data);
   }
 
   async createLibraryCardApplication(application: InsertLibraryCardApplication): Promise<LibraryCardApplication> {
-    const id = this.genId();
+    // We need to implement the card number generation logic here or move it to a stored procedure
+    // For now, duplicate the logic from MemStorage
     const cardNumber = this.generateCardNumber(application.field, application.rollNo, application.class);
     const studentId = `GCMN-${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
     const issueDate = new Date().toISOString().split('T')[0];
@@ -270,19 +288,18 @@ export class MemStorage implements IStorage {
     validThroughDate.setFullYear(validThroughDate.getFullYear() + 1);
     const validThrough = validThroughDate.toISOString().split('T')[0];
 
-    const newApp: LibraryCardApplication = {
-      ...application,
-      id,
-      cardNumber,
-      studentId,
-      issueDate,
-      validThrough,
-      status: "pending",
-      createdAt: new Date(),
-      updatedAt: new Date()
-    } as LibraryCardApplication;
-    this.libraryCardApplications.set(id, newApp);
-    return newApp;
+    const payload = {
+      ...toSnake(application),
+      card_number: cardNumber,
+      student_id: studentId,
+      issue_date: issueDate,
+      valid_through: validThrough,
+      status: "pending"
+    };
+
+    const { data, error } = await supabase.from('library_card_applications').insert(payload).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
   private generateCardNumber(field: string | null | undefined, rollNo: string, studentClass: string): string {
@@ -308,224 +325,265 @@ export class MemStorage implements IStorage {
   }
 
   async updateLibraryCardApplicationStatus(id: string, status: string): Promise<LibraryCardApplication | undefined> {
-    const app = this.libraryCardApplications.get(id);
-    if (!app) return undefined;
-    const updated = { ...app, status, updatedAt: new Date() };
-    this.libraryCardApplications.set(id, updated);
-    return updated;
+    const { data, error } = await supabase
+      .from('library_card_applications')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    // Logic to create student record if approved
+    if (data && status === 'approved') {
+      // Check if student exists?
+      // Just blindly try to create/ensure unique?
+      // Let's check first
+      const card = toCamel(data) as LibraryCardApplication;
+      if (card.cardNumber) {
+        const { count } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('card_id', card.cardNumber);
+        if (count === 0) {
+          await this.createStudent({
+            userId: card.id, // Using application ID as userId for student, or card.userId?
+            // MemStorage used: userId: application.userId || `card-${application.id}`
+            // We should stick to that logic
+            userId: card.userId || `card-${card.id}`,
+            cardId: card.cardNumber!,
+            name: `${card.firstName} ${card.lastName}`,
+            class: card.class,
+            field: card.field,
+            rollNo: card.rollNo
+          } as any);
+        }
+      }
+    }
+
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async deleteLibraryCardApplication(id: string): Promise<void> {
-    this.libraryCardApplications.delete(id);
+    await supabase.from('library_card_applications').delete().eq('id', id);
   }
 
   async getLibraryCardByCardNumber(cardNumber: string): Promise<LibraryCardApplication | undefined> {
-    return Array.from(this.libraryCardApplications.values()).find(a => a.cardNumber === cardNumber);
+    const { data, error } = await supabase.from('library_card_applications').select('*').ilike('card_number', cardNumber).single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
+  // DONATIONS
   async getDonations(): Promise<Donation[]> {
-    return Array.from(this.donations.values());
+    const { data, error } = await supabase.from('donations').select('*');
+    if (error) return [];
+    return toCamel(data);
   }
 
   async createDonation(donation: InsertDonation): Promise<Donation> {
-    const id = this.genId();
-    const newDonation: Donation = { ...donation, id, createdAt: new Date() } as Donation;
-    this.donations.set(id, newDonation);
-    return newDonation;
+    const { data, error } = await supabase.from('donations').insert(toSnake(donation)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
   async deleteDonation(id: string): Promise<void> {
-    this.donations.delete(id);
+    await supabase.from('donations').delete().eq('id', id);
   }
 
+  // STUDENTS
   async getStudents(): Promise<Student[]> {
-    return Array.from(this.students.values());
+    const { data, error } = await supabase.from('students').select('*');
+    if (error) return [];
+    return toCamel(data);
   }
 
   async getStudent(userId: string): Promise<Student | undefined> {
-    return Array.from(this.students.values()).find(s => s.userId === userId);
+    const { data, error } = await supabase.from('students').select('*').eq('user_id', userId).single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async createStudent(student: InsertStudent): Promise<Student> {
-    const id = this.genId();
-    const newStudent: Student = { ...student, id, createdAt: new Date() } as Student;
-    this.students.set(id, newStudent);
-    return newStudent;
+    const { data, error } = await supabase.from('students').insert(toSnake(student)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
+  // NON STUDENTS
   async getNonStudents(): Promise<NonStudent[]> {
-    return Array.from(this.nonStudents.values());
+    const { data, error } = await supabase.from('non_students').select('*');
+    if (error) return [];
+    return toCamel(data);
   }
 
   async getNonStudent(userId: string): Promise<NonStudent | undefined> {
-    return Array.from(this.nonStudents.values()).find(ns => ns.userId === userId);
+    const { data, error } = await supabase.from('non_students').select('*').eq('user_id', userId).single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async createNonStudent(nonStudent: InsertNonStudent): Promise<NonStudent> {
-    const id = this.genId();
-    const newNonStudent: NonStudent = { ...nonStudent, id, createdAt: new Date() } as NonStudent;
-    this.nonStudents.set(id, newNonStudent);
-    return newNonStudent;
+    const { data, error } = await supabase.from('non_students').insert(toSnake(nonStudent)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
+  // NOTIFICATIONS
   async getNotifications(): Promise<Notification[]> {
-    return Array.from(this.notifications.values()).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const { data, error } = await supabase.from('notifications').select('*').order('created_at', { ascending: false });
+    if (error) return [];
+    return toCamel(data);
   }
 
   async createNotification(notification: InsertNotification): Promise<Notification> {
-    const id = this.genId();
-    const newNotif: Notification = { ...notification, id, createdAt: new Date() } as Notification;
-    this.notifications.set(id, newNotif);
-    return newNotif;
+    const { data, error } = await supabase.from('notifications').insert(toSnake(notification)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
   async deleteNotification(id: string): Promise<void> {
-    this.notifications.delete(id);
+    await supabase.from('notifications').delete().eq('id', id);
   }
 
+  // BOOKS
   async getBooks(): Promise<Book[]> {
-    return Array.from(this.books.values());
+    const { data, error } = await supabase.from('books').select('*').order('created_at', { ascending: false });
+    if (error) return [];
+    return toCamel(data);
   }
 
   async getBook(id: string): Promise<Book | undefined> {
-    return this.books.get(id);
+    const { data, error } = await supabase.from('books').select('*').eq('id', id).single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async createBook(book: InsertBook): Promise<Book> {
-    const id = this.genId();
-    // Assuming Book uses numbers for copies, though schema interface says number
-    const newBook: Book = {
-      ...book,
-      id,
-      totalCopies: Number(book.totalCopies || 1),
-      availableCopies: Number(book.availableCopies || 1),
-      createdAt: new Date(),
-      updatedAt: new Date()
-    } as Book;
-    this.books.set(id, newBook);
-    return newBook;
+    const payload = toSnake(book);
+    // Ensure numbers
+    payload.total_copies = Number(book.totalCopies || 1);
+    payload.available_copies = Number(book.availableCopies || 1);
+
+    const { data, error } = await supabase.from('books').insert(payload).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
-  async updateBook(id: string, partial: Partial<InsertBook>): Promise<Book | undefined> {
-    const book = this.books.get(id);
-    if (!book) return undefined;
-    const updated = {
-      ...book,
-      ...partial,
-      totalCopies: partial.totalCopies !== undefined ? Number(partial.totalCopies) : book.totalCopies,
-      availableCopies: partial.availableCopies !== undefined ? Number(partial.availableCopies) : book.availableCopies,
-      updatedAt: new Date()
-    };
-    this.books.set(id, updated);
-    return updated;
+  async updateBook(id: string, book: Partial<InsertBook>): Promise<Book | undefined> {
+    const payload = toSnake(book);
+    if (book.totalCopies !== undefined) payload.total_copies = Number(book.totalCopies);
+    if (book.availableCopies !== undefined) payload.available_copies = Number(book.availableCopies);
+
+    const { data, error } = await supabase.from('books').update(payload).eq('id', id).select().single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async deleteBook(id: string): Promise<void> {
-    this.books.delete(id);
+    await supabase.from('books').delete().eq('id', id);
   }
 
+  // EVENTS
   async getEvents(): Promise<Event[]> {
-    return Array.from(this.events.values());
+    const { data, error } = await supabase.from('events').select('*');
+    if (error) return [];
+    return toCamel(data);
   }
 
   async createEvent(event: InsertEvent): Promise<Event> {
-    const id = this.genId();
-    const newEvent: Event = {
-      ...event,
-      id,
-      images: event.images || null,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    } as Event;
-    this.events.set(id, newEvent);
-    return newEvent;
+    const { data, error } = await supabase.from('events').insert(toSnake(event)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
-  async updateEvent(id: string, partial: Partial<InsertEvent>): Promise<Event | undefined> {
-    const event = this.events.get(id);
-    if (!event) return undefined;
-    const updated = {
-      ...event,
-      ...partial,
-      updatedAt: new Date()
-    };
-    this.events.set(id, updated);
-    return updated;
+  async updateEvent(id: string, event: Partial<InsertEvent>): Promise<Event | undefined> {
+    const { data, error } = await supabase.from('events').update(toSnake(event)).eq('id', id).select().single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async deleteEvent(id: string): Promise<void> {
-    this.events.delete(id);
+    await supabase.from('events').delete().eq('id', id);
   }
 
+  // RARE BOOKS
   async getRareBooks(): Promise<RareBook[]> {
-    return Array.from(this.rareBooks.values());
+    const { data, error } = await supabase.from('rare_books').select('*');
+    if (error) return [];
+    return toCamel(data);
   }
 
   async getRareBook(id: string): Promise<RareBook | undefined> {
-    return this.rareBooks.get(id);
+    const { data, error } = await supabase.from('rare_books').select('*').eq('id', id).single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async createRareBook(book: InsertRareBook): Promise<RareBook> {
-    const id = this.genId();
-    const newBook: RareBook = { ...book, id, createdAt: new Date() } as RareBook;
-    this.rareBooks.set(id, newBook);
-    return newBook;
+    const { data, error } = await supabase.from('rare_books').insert(toSnake(book)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
   async toggleRareBookStatus(id: string): Promise<RareBook | undefined> {
-    const book = this.rareBooks.get(id);
+    // fetching first to get status is inefficient, but simplifies toggling
+    const book = await this.getRareBook(id);
     if (!book) return undefined;
-    const updated = { ...book, status: book.status === "active" ? "inactive" : "active" };
-    this.rareBooks.set(id, updated);
-    return updated;
+    const newStatus = book.status === 'active' ? 'inactive' : 'active';
+
+    const { data, error } = await supabase.from('rare_books').update({ status: newStatus }).eq('id', id).select().single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async deleteRareBook(id: string): Promise<void> {
-    this.rareBooks.delete(id);
+    await supabase.from('rare_books').delete().eq('id', id);
   }
 
+  // NOTES
   async getNotes(): Promise<Note[]> {
-    return Array.from(this.notes.values());
+    const { data, error } = await supabase.from('notes').select('*');
+    if (error) return [];
+    return toCamel(data);
   }
 
   async getActiveNotes(): Promise<Note[]> {
-    return Array.from(this.notes.values()).filter(n => n.status === "active");
+    const { data, error } = await supabase.from('notes').select('*').eq('status', 'active');
+    if (error) return [];
+    return toCamel(data);
   }
 
   async getNotesByClassAndSubject(studentClass: string, subject: string): Promise<Note[]> {
-    return Array.from(this.notes.values()).filter(n =>
-      n.class === studentClass &&
-      n.subject === subject &&
-      n.status === "active"
-    );
+    const { data, error } = await supabase.from('notes').select('*')
+      .eq('class', studentClass)
+      .eq('subject', subject)
+      .eq('status', 'active');
+    if (error) return [];
+    return toCamel(data);
   }
 
   async createNote(note: InsertNote): Promise<Note> {
-    const id = this.genId();
-    const newNote: Note = { ...note, id, createdAt: new Date() } as Note;
-    this.notes.set(id, newNote);
-    return newNote;
+    const { data, error } = await supabase.from('notes').insert(toSnake(note)).select().single();
+    if (error) throw new Error(error.message);
+    return toCamel(data);
   }
 
-  async updateNote(id: string, partial: Partial<InsertNote>): Promise<Note | undefined> {
-    const note = this.notes.get(id);
-    if (!note) return undefined;
-    const updated = { ...note, ...partial };
-    this.notes.set(id, updated);
-    return updated;
+  async updateNote(id: string, note: Partial<InsertNote>): Promise<Note | undefined> {
+    const { data, error } = await supabase.from('notes').update(toSnake(note)).eq('id', id).select().single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async toggleNoteStatus(id: string): Promise<Note | undefined> {
-    const note = this.notes.get(id);
+    const note = await this.getNotes().then(notes => notes.find(n => n.id === id));
     if (!note) return undefined;
-    const updated = { ...note, status: note.status === "active" ? "inactive" : "active" };
-    this.notes.set(id, updated);
-    return updated;
+    const newStatus = note.status === 'active' ? 'inactive' : 'active';
+
+    const { data, error } = await supabase.from('notes').update({ status: newStatus }).eq('id', id).select().single();
+    if (error) return undefined;
+    return toCamel(data);
   }
 
   async deleteNote(id: string): Promise<void> {
-    this.notes.delete(id);
+    await supabase.from('notes').delete().eq('id', id);
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new SupabaseStorage();

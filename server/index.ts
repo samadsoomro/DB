@@ -1,19 +1,15 @@
 import express, { type Request, Response, NextFunction } from "express";
-import session from "express-session";
+import cookieSession from "cookie-session"; // Use cookie-session for serverless compatibility
 import { createServer } from "http";
 import path from "path";
-import fs from "fs";
+import fs from "fs"; // Still needed for dist check locally, but not for uploads
 import { registerRoutes } from "./routes.js";
-import { storage } from "./storage.js";
-import MemoryStoreSrc from "memorystore";
-
-const MemoryStore = MemoryStoreSrc(session);
 
 const app = express();
-app.use(express.json({ limit: '1024mb' }));
-app.use(express.urlencoded({ extended: false, limit: '1024mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
-// Health check endpoint for early debugging
+// Health check endpoint
 app.get("/api/health", (_req, res) => {
   res.json({
     status: "ok",
@@ -22,19 +18,14 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+// Use cookie-session instead of express-session + MemoryStore
 app.use(
-  session({
-    store: new MemoryStore({
-      checkPeriod: 86400000 // prune expired entries every 24h
-    }),
-    secret: process.env.SESSION_SECRET || "gcmn-library-secret-2024",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      maxAge: 86400000,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax"
-    },
+  cookieSession({
+    name: 'session',
+    keys: [process.env.SESSION_SECRET || 'gcmn-library-secret-key-replaced-with-env'],
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? 'none' : 'lax' // 'none' required for cross-site if needed, but 'lax' usually fine
   })
 );
 
@@ -65,7 +56,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Register routes synchronously so the app is ready when imported by Vercel
+// Register routes synchronously
 registerRoutes(app);
 
 // Error handling
@@ -79,16 +70,12 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 const server = createServer(app);
 server.timeout = 600000;
 
-// Setup static files and Vite (Vite is development only)
-const uploadDir = path.join(process.cwd(), "server", "uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-app.use("/server/uploads", express.static(uploadDir));
+// Replaced local upload serving with Supabase logic in routes.ts
+// Removed app.use("/server/uploads", ...)
 
 if (app.get("env") === "development") {
   (async () => {
-    const vitePath = "./vi" + "te.js";
+    const vitePath = "./vi" + "te.js"; // Avoids Vercel analysis scanning this import
     try {
       const { setupVite } = await import(vitePath);
       await setupVite(app, server);
