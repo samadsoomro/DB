@@ -83,13 +83,16 @@ if (app.get("env") === "development") {
       console.error("[SERVER] Failed to load Vite:", e);
     }
   })();
-} else {
-  const distPath = path.resolve(process.cwd(), "dist");
-  if (fs.existsSync(distPath)) {
-    app.use(express.static(distPath));
-    app.use("*", (_req, res) => {
-      res.sendFile(path.resolve(distPath, "index.html"));
-    });
+  // On Vercel, static files are handled by the platform.
+  // We only serve static files locally or in a traditional VPS setup.
+  if (!process.env.VERCEL) {
+    const distPath = path.resolve(process.cwd(), "dist");
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.use("*", (_req, res) => {
+        res.sendFile(path.resolve(distPath, "index.html"));
+      });
+    }
   }
 }
 
